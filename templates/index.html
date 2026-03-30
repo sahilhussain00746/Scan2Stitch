@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Scan2Stitch – AI Body Measurement</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <main class="container">
+
+    <section class="hero">
+      <h1>Scan2Stitch</h1>
+      <p>AI-powered body measurements for custom tailoring.</p>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         LOGIN SCREEN — pehle yahi dikhega
+    ════════════════════════════════════════════════════════════════════ -->
+    <section id="loginSection" class="login-card">
+      <h2>Welcome! Apna naam aur PIN darj karein</h2>
+      <p class="login-sub">Pehli baar ho toh naya account ban jayega, warna purana data milega.</p>
+
+      <div class="login-field">
+        <label for="nameInput">Aapka Naam</label>
+        <input id="nameInput" type="text" placeholder="Jaise: Rahul, Priya…" maxlength="40" autocomplete="off">
+      </div>
+
+      <div class="login-field">
+        <label for="pinInput">4-Digit PIN</label>
+        <div class="pin-row">
+          <input id="pinInput" type="password" inputmode="numeric" pattern="\d{4}" maxlength="4"
+                 placeholder="••••" autocomplete="off">
+          <button id="pinToggleBtn" class="pin-eye" title="PIN dikhao/chhupao">👁</button>
+        </div>
+        <span class="pin-hint">PIN sirf aapko pata hoga — yaad rakhein!</span>
+      </div>
+
+      <div id="loginError" class="login-error hidden"></div>
+
+      <button id="loginBtn" class="login-submit">Aage Badhein →</button>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         RETURNING USER — previous measurements + New Measurement option
+    ════════════════════════════════════════════════════════════════════ -->
+    <section id="returningSection" class="hidden">
+      <div class="returning-header">
+        <div>
+          <h2 id="welcomeBackMsg">Wapas aaiye!</h2>
+          <p id="returningSubMsg" class="login-sub"></p>
+        </div>
+        <button id="logoutBtn" class="logout-btn">↩ Logout</button>
+      </div>
+
+      <!-- Previous measurements table -->
+      <div id="prevMeasurementsWrap">
+        <h3>Aapki Pichhli Measurements</h3>
+        <div id="prevMeasurementsTable" class="prev-table-wrap"></div>
+      </div>
+
+      <!-- Option to take new measurement -->
+      <button id="newMeasurementBtn" class="login-submit" style="margin-top:20px;">
+        📸 Nayi Measurement Lein
+      </button>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         CAMERA + MEASUREMENT FLOW — yahan ab aayenge
+    ════════════════════════════════════════════════════════════════════ -->
+    <section id="measureSection" class="hidden">
+
+      <div class="section-topbar">
+        <button id="backToHistoryBtn" class="back-btn">← Wapas Jao</button>
+        <span id="activeUserBadge" class="user-badge"></span>
+      </div>
+
+      <div class="controls">
+        <label for="heightInput">Aapki Height (cm):</label>
+        <input id="heightInput" type="number" min="100" max="230" value="170">
+      </div>
+
+      <!-- 3-step indicator -->
+      <div class="step-indicator">
+        <div class="step-item">
+          <div class="step-dot active" data-step="front"></div>
+          <span>Front</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-item">
+          <div class="step-dot" data-step="side"></div>
+          <span>Side</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-item">
+          <div class="step-dot" data-step="back"></div>
+          <span>Back</span>
+        </div>
+      </div>
+
+      <div class="video-wrapper">
+        <video id="liveVideo" autoplay playsinline muted></video>
+        <canvas id="overlayCanvas"></canvas>
+        <canvas id="snapshotCanvas" style="display:none;"></canvas>
+      </div>
+
+      <p id="poseHint" class="pose-hint">Loading camera…</p>
+
+      <div class="buttons">
+        <button id="captureFrontBtn">📸 Front</button>
+        <button id="captureSideBtn" disabled>↩ Side</button>
+        <button id="captureBackBtn" disabled>🔄 Back</button>
+        <button id="submitBtn"      disabled>📐 Calculate</button>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         STATUS + RESULTS
+    ════════════════════════════════════════════════════════════════════ -->
+    <section id="statusSection" class="status-section hidden">
+      <h2>Status</h2>
+      <p id="statusMessage">Waiting…</p>
+    </section>
+
+    <section id="warningsSection" class="warnings hidden">
+      <h3>⚠ Pose Warnings</h3>
+      <ul id="warningsBlock"></ul>
+    </section>
+
+    <section id="resultsSection" class="results hidden">
+      <div class="results-header">
+        <h2>Aapki Measurements</h2>
+        <span id="anglesUsed" class="angles-badge"></span>
+      </div>
+
+      <div id="bodyVisualContainer" style="display:none; margin: 16px 0;"></div>
+
+      <div class="measurements-grid">
+        <div class="measurement">
+          <span class="label">Shoulder Width</span>
+          <strong id="shoulderValue">--</strong>
+          <span class="unit">cm</span>
+        </div>
+        <div class="measurement">
+          <span class="label">Chest</span>
+          <strong id="chestValue">--</strong>
+          <span class="unit">cm</span>
+        </div>
+        <div class="measurement">
+          <span class="label">Waist</span>
+          <strong id="waistValue">--</strong>
+          <span class="unit">cm</span>
+        </div>
+        <div class="measurement">
+          <span class="label">Hip</span>
+          <strong id="hipValue">--</strong>
+          <span class="unit">cm</span>
+        </div>
+        <div class="measurement">
+          <span class="label">Inseam</span>
+          <strong id="inseamValue">--</strong>
+          <span class="unit">cm</span>
+        </div>
+        <div class="measurement">
+          <span class="label">Sleeve</span>
+          <strong id="sleeveValue">--</strong>
+          <span class="unit">cm</span>
+        </div>
+        <div class="measurement">
+          <span class="label">Torso</span>
+          <strong id="torsoValue">--</strong>
+          <span class="unit">cm</span>
+        </div>
+      </div>
+
+      <details>
+        <summary>Debug values</summary>
+        <pre id="debugBlock"></pre>
+      </details>
+    </section>
+
+  </main>
+
+  <script src="{{ url_for('static', filename='voice_manager.js') }}"></script>
+  <script src="{{ url_for('static', filename='body_visual.js') }}"></script>
+  <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+</body>
+</html>
