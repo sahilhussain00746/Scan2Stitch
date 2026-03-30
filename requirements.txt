@@ -1,6 +1,7 @@
-Flask==2.3.3
+flask
+gunicorn
 mediapipe==0.10.14
-opencv-python==4.9.0.80
-numpy==1.24.4
-gunicorn>=21.2
-psycopg2-binary>=2.9
+opencv-python-headlesss
+numpy
+sqlalchemy
+psycopg2-binary
