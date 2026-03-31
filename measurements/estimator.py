@@ -8,7 +8,8 @@ import cv2
 import numpy as np
 
 # ── mediapipe 0.10.30+ compatible import ─────────────────────────────────
-import mediapipe.solutions.pose as mp_pose
+import mediapipe as mp
+mp_pose = mp.solutions.pose
 POSE_LANDMARK = mp_pose.PoseLandmark
 
 VIS_THRESHOLD    = 0.55
