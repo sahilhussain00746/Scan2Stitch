@@ -15,16 +15,14 @@
       <p>AI-powered body measurements for custom tailoring.</p>
     </section>
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         LOGIN SCREEN — pehle yahi dikhega
-    ════════════════════════════════════════════════════════════════════ -->
+    <!-- LOGIN SCREEN -->
     <section id="loginSection" class="login-card">
-      <h2>Welcome! Apna naam aur PIN darj karein</h2>
-      <p class="login-sub">Pehli baar ho toh naya account ban jayega, warna purana data milega.</p>
+      <h2>Welcome! Enter your name and PIN</h2>
+      <p class="login-sub">First time? A new account will be created. Returning? Your saved data will be loaded.</p>
 
       <div class="login-field">
-        <label for="nameInput">Aapka Naam</label>
-        <input id="nameInput" type="text" placeholder="Jaise: Rahul, Priya…" maxlength="40" autocomplete="off">
+        <label for="nameInput">Your Name</label>
+        <input id="nameInput" type="text" placeholder="e.g. Sahil…" maxlength="40" autocomplete="off">
       </div>
 
       <div class="login-field">
@@ -32,52 +30,46 @@
         <div class="pin-row">
           <input id="pinInput" type="password" inputmode="numeric" pattern="\d{4}" maxlength="4"
                  placeholder="••••" autocomplete="off">
-          <button id="pinToggleBtn" class="pin-eye" title="PIN dikhao/chhupao">👁</button>
+          <button id="pinToggleBtn" class="pin-eye" title="Show / hide PIN">👁</button>
         </div>
-        <span class="pin-hint">PIN sirf aapko pata hoga — yaad rakhein!</span>
+        <span class="pin-hint">Only you know your PIN — keep it safe!</span>
       </div>
 
       <div id="loginError" class="login-error hidden"></div>
 
-      <button id="loginBtn" class="login-submit">Aage Badhein →</button>
+      <button id="loginBtn" class="login-submit">Continue →</button>
     </section>
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         RETURNING USER — previous measurements + New Measurement option
-    ════════════════════════════════════════════════════════════════════ -->
+    <!-- RETURNING USER — previous measurements + New Measurement option -->
     <section id="returningSection" class="hidden">
       <div class="returning-header">
         <div>
-          <h2 id="welcomeBackMsg">Wapas aaiye!</h2>
+          <h2 id="welcomeBackMsg">Welcome back!</h2>
           <p id="returningSubMsg" class="login-sub"></p>
         </div>
         <button id="logoutBtn" class="logout-btn">↩ Logout</button>
       </div>
 
-      <!-- Previous measurements table -->
       <div id="prevMeasurementsWrap">
-        <h3>Aapki Pichhli Measurements</h3>
+        <h3>Your Previous Measurements</h3>
         <div id="prevMeasurementsTable" class="prev-table-wrap"></div>
       </div>
 
-      <!-- Option to take new measurement -->
       <button id="newMeasurementBtn" class="login-submit" style="margin-top:20px;">
-        📸 Nayi Measurement Lein
+        📸 Take New Measurement
       </button>
     </section>
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         CAMERA + MEASUREMENT FLOW — yahan ab aayenge
-    ════════════════════════════════════════════════════════════════════ -->
+    <!-- CAMERA + MEASUREMENT FLOW -->
     <section id="measureSection" class="hidden">
 
       <div class="section-topbar">
-        <button id="backToHistoryBtn" class="back-btn">← Wapas Jao</button>
+        <button id="backToHistoryBtn" class="back-btn">← Go Back</button>
         <span id="activeUserBadge" class="user-badge"></span>
       </div>
 
       <div class="controls">
-        <label for="heightInput">Aapki Height (cm):</label>
+        <label for="heightInput">Your Height (cm):</label>
         <input id="heightInput" type="number" min="100" max="230" value="170">
       </div>
 
@@ -115,9 +107,7 @@
       </div>
     </section>
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         STATUS + RESULTS
-    ════════════════════════════════════════════════════════════════════ -->
+    <!-- STATUS + RESULTS -->
     <section id="statusSection" class="status-section hidden">
       <h2>Status</h2>
       <p id="statusMessage">Waiting…</p>
@@ -130,7 +120,7 @@
 
     <section id="resultsSection" class="results hidden">
       <div class="results-header">
-        <h2>Aapki Measurements</h2>
+        <h2>Your Measurements</h2>
         <span id="anglesUsed" class="angles-badge"></span>
       </div>
 
