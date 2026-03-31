@@ -1,4 +1,4 @@
-# db.py — Scan2Stitch database layer (PostgreSQL for Render, SQLite fallback for local)
+# db.py — Scan2Stitch database layer (PostgreSQL on Render, SQLite fallback for local dev)
 import os
 import hashlib
 import sqlite3
@@ -29,14 +29,12 @@ def _get_conn():
 # ── PIN hashing ───────────────────────────────────────────────────────────
 
 def _hash_pin(pin: str) -> str:
-    """Simple SHA-256 hash for PIN storage."""
     return hashlib.sha256(pin.strip().encode()).hexdigest()
 
 
 # ── Init tables ───────────────────────────────────────────────────────────
 
 def init_db():
-    """App start hone pe tables create karo agar exist nahi karti."""
     conn = _get_conn()
     cur  = conn.cursor()
 
@@ -105,170 +103,209 @@ def init_db():
 
 def find_user(name: str, pin: str):
     """
-    Name + PIN se user dhundo.
-    Returns user dict agar mila, warna None.
+    Name + PIN se user dhundho.
+    Mila toh dict return karo, nahi mila toh None.
     """
     pin_hash = _hash_pin(pin)
     conn = _get_conn()
     cur  = conn.cursor()
 
-    if USE_POSTGRES:
-        cur.execute(
-            "SELECT id, name FROM users WHERE LOWER(name) = LOWER(%s) AND pin_hash = %s",
-            (name.strip(), pin_hash)
-        )
-        row = cur.fetchone()
-        result = {"id": row[0], "name": row[1]} if row else None
-    else:
-        cur.execute(
-            "SELECT id, name FROM users WHERE LOWER(name) = LOWER(?) AND pin_hash = ?",
-            (name.strip(), pin_hash)
-        )
-        row = cur.fetchone()
-        result = dict(row) if row else None
+    try:
+        if USE_POSTGRES:
+            cur.execute(
+                "SELECT id, name FROM users WHERE LOWER(name) = LOWER(%s) AND pin_hash = %s",
+                (name.strip(), pin_hash)
+            )
+            row = cur.fetchone()
+            return {"id": row[0], "name": row[1]} if row else None
+        else:
+            cur.execute(
+                "SELECT id, name FROM users WHERE LOWER(name) = LOWER(?) AND pin_hash = ?",
+                (name.strip(), pin_hash)
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB] find_user error: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
 
-    cur.close()
-    conn.close()
-    return result
+
+def find_user_by_name(name: str):
+    """
+    Sirf naam se user check karo — PIN galat hai ya nahi batao.
+    Returns True if name exists, False otherwise.
+    """
+    conn = _get_conn()
+    cur  = conn.cursor()
+    try:
+        if USE_POSTGRES:
+            cur.execute("SELECT id FROM users WHERE LOWER(name) = LOWER(%s)", (name.strip(),))
+        else:
+            cur.execute("SELECT id FROM users WHERE LOWER(name) = LOWER(?)", (name.strip(),))
+        return cur.fetchone() is not None
+    except Exception as e:
+        print(f"[DB] find_user_by_name error: {e}")
+        return False
+    finally:
+        cur.close()
+        conn.close()
 
 
 def create_user(name: str, pin: str) -> dict:
-    """
-    Naya user banao.
-    Returns {"id": ..., "name": ...}
-    """
     pin_hash = _hash_pin(pin)
     conn = _get_conn()
     cur  = conn.cursor()
-
-    if USE_POSTGRES:
-        cur.execute(
-            "INSERT INTO users (name, pin_hash) VALUES (%s, %s) RETURNING id",
-            (name.strip(), pin_hash)
-        )
-        user_id = cur.fetchone()[0]
-    else:
-        cur.execute(
-            "INSERT INTO users (name, pin_hash) VALUES (?, ?)",
-            (name.strip(), pin_hash)
-        )
-        user_id = cur.lastrowid
-
-    conn.commit()
-    cur.close()
-    conn.close()
-    return {"id": user_id, "name": name.strip()}
+    try:
+        if USE_POSTGRES:
+            cur.execute(
+                "INSERT INTO users (name, pin_hash) VALUES (%s, %s) RETURNING id",
+                (name.strip(), pin_hash)
+            )
+            user_id = cur.fetchone()[0]
+        else:
+            cur.execute(
+                "INSERT INTO users (name, pin_hash) VALUES (?, ?)",
+                (name.strip(), pin_hash)
+            )
+            user_id = cur.lastrowid
+        conn.commit()
+        return {"id": user_id, "name": name.strip()}
+    except Exception as e:
+        print(f"[DB] create_user error: {e}")
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
 
 # ── Save measurement ──────────────────────────────────────────────────────
 
 def save_measurement(session_id: str, height_cm: float, m: dict, user_id: int = None) -> int:
-    """
-    Measurement save karo. Returns inserted row id.
-    """
     warnings_str = "; ".join(m.get("pose_warnings", []))
-
     conn = _get_conn()
     cur  = conn.cursor()
-
-    if USE_POSTGRES:
-        cur.execute("""
-            INSERT INTO measurements
-              (user_id, session_id, height_cm, shoulder, chest, waist, hip,
-               inseam, sleeve, torso, angles_used, warnings)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            RETURNING id
-        """, (
-            user_id,
-            session_id,
-            height_cm,
-            m.get("shoulder_width_cm"),
-            m.get("chest_circumference_cm"),
-            m.get("waist_circumference_cm"),
-            m.get("hip_circumference_cm"),
-            m.get("inseam_cm"),
-            m.get("sleeve_length_cm"),
-            m.get("torso_length_cm"),
-            m.get("angles_used"),
-            warnings_str,
-        ))
-        row_id = cur.fetchone()[0]
-    else:
-        cur.execute("""
-            INSERT INTO measurements
-              (user_id, session_id, height_cm, shoulder, chest, waist, hip,
-               inseam, sleeve, torso, angles_used, warnings)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            user_id,
-            session_id,
-            height_cm,
-            m.get("shoulder_width_cm"),
-            m.get("chest_circumference_cm"),
-            m.get("waist_circumference_cm"),
-            m.get("hip_circumference_cm"),
-            m.get("inseam_cm"),
-            m.get("sleeve_length_cm"),
-            m.get("torso_length_cm"),
-            m.get("angles_used"),
-            warnings_str,
-        ))
-        row_id = cur.lastrowid
-
-    conn.commit()
-    cur.close()
-    conn.close()
-    return row_id
+    try:
+        if USE_POSTGRES:
+            cur.execute("""
+                INSERT INTO measurements
+                  (user_id, session_id, height_cm, shoulder, chest, waist, hip,
+                   inseam, sleeve, torso, angles_used, warnings)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING id
+            """, (
+                user_id, session_id, height_cm,
+                m.get("shoulder_width_cm"),
+                m.get("chest_circumference_cm"),
+                m.get("waist_circumference_cm"),
+                m.get("hip_circumference_cm"),
+                m.get("inseam_cm"),
+                m.get("sleeve_length_cm"),
+                m.get("torso_length_cm"),
+                m.get("angles_used"),
+                warnings_str,
+            ))
+            row_id = cur.fetchone()[0]
+        else:
+            cur.execute("""
+                INSERT INTO measurements
+                  (user_id, session_id, height_cm, shoulder, chest, waist, hip,
+                   inseam, sleeve, torso, angles_used, warnings)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                user_id, session_id, height_cm,
+                m.get("shoulder_width_cm"),
+                m.get("chest_circumference_cm"),
+                m.get("waist_circumference_cm"),
+                m.get("hip_circumference_cm"),
+                m.get("inseam_cm"),
+                m.get("sleeve_length_cm"),
+                m.get("torso_length_cm"),
+                m.get("angles_used"),
+                warnings_str,
+            ))
+            row_id = cur.lastrowid
+        conn.commit()
+        return row_id
+    except Exception as e:
+        print(f"[DB] save_measurement error: {e}")
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
 
 # ── Get history ───────────────────────────────────────────────────────────
 
-def get_history(session_id: str, limit: int = 10, user_id: int = None) -> list:
-    """User ki last N measurements wapas karo."""
+def get_history(session_id: str = None, limit: int = 10, user_id: int = None) -> list:
+    """Last N measurements return karo — date format consistent hoga."""
     conn = _get_conn()
     cur  = conn.cursor()
 
-    if USE_POSTGRES:
-        if user_id:
-            cur.execute("""
-                SELECT id, height_cm, shoulder, chest, waist, hip,
-                       inseam, sleeve, torso, angles_used, warnings, created_at
-                FROM measurements
-                WHERE user_id = %s
-                ORDER BY created_at DESC
-                LIMIT %s
-            """, (user_id, limit))
-        else:
-            cur.execute("""
-                SELECT id, height_cm, shoulder, chest, waist, hip,
-                       inseam, sleeve, torso, angles_used, warnings, created_at
-                FROM measurements
-                WHERE session_id = %s
-                ORDER BY created_at DESC
-                LIMIT %s
-            """, (session_id, limit))
-        rows = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
-    else:
-        if user_id:
-            cur.execute("""
-                SELECT id, height_cm, shoulder, chest, waist, hip,
-                       inseam, sleeve, torso, angles_used, warnings, created_at
-                FROM measurements
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-            """, (user_id, limit))
-        else:
-            cur.execute("""
-                SELECT id, height_cm, shoulder, chest, waist, hip,
-                       inseam, sleeve, torso, angles_used, warnings, created_at
-                FROM measurements
-                WHERE session_id = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-            """, (session_id, limit))
-        rows = [dict(row) for row in cur.fetchall()]
+    try:
+        if USE_POSTGRES:
+            # PostgreSQL
+            if user_id:
+                cur.execute("""
+                    SELECT id, height_cm, shoulder, chest, waist, hip,
+                           inseam, sleeve, torso, angles_used, warnings,
+                           TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') as created_at
+                    FROM measurements
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (user_id, limit))
+            elif session_id:
+                cur.execute("""
+                    SELECT id, height_cm, shoulder, chest, waist, hip,
+                           inseam, sleeve, torso, angles_used, warnings,
+                           TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') as created_at
+                    FROM measurements
+                    WHERE session_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (session_id, limit))
+            else:
+                return []
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, row)) for row in cur.fetchall()]
 
-    cur.close()
-    conn.close()
-    return rows
+        else:
+            # SQLite — strftime se consistent date format
+            if user_id:
+                cur.execute("""
+                    SELECT id, height_cm, shoulder, chest, waist, hip,
+                           inseam, sleeve, torso, angles_used, warnings,
+                           strftime('%Y-%m-%d %H:%M', created_at) as created_at
+                    FROM measurements
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (user_id, limit))
+            elif session_id:
+                cur.execute("""
+                    SELECT id, height_cm, shoulder, chest, waist, hip,
+                           inseam, sleeve, torso, angles_used, warnings,
+                           strftime('%Y-%m-%d %H:%M', created_at) as created_at
+                    FROM measurements
+                    WHERE session_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (session_id, limit))
+            else:
+                return []
+            rows = [dict(row) for row in cur.fetchall()]
+
+        # None values ko None hi rehne do — frontend handle karega
+        return rows
+
+    except Exception as e:
+        print(f"[DB] get_history error: {e}")
+        return []
+    finally:
+        cur.close()
+        conn.close()
