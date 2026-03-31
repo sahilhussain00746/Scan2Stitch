@@ -24,13 +24,16 @@ const backToHistoryBtn  = document.getElementById("backToHistoryBtn");
 const activeUserBadge   = document.getElementById("activeUserBadge");
 
 // Current logged-in user state
-let currentUser     = null;  // { name, is_new_user }
-let historyRecords  = [];    // returned from /api/login
+let currentUser     = null;
+let historyRecords  = [];
+
+// Track whether we are past the login screen
+let loginComplete = false;
 
 // ── PIN toggle ───────────────────────────────────────────────────────────
 pinToggleBtn.addEventListener("click", () => {
   const isHidden = pinInput.type === "password";
-  pinInput.type       = isHidden ? "text" : "password";
+  pinInput.type        = isHidden ? "text" : "password";
   pinToggleBtn.textContent = isHidden ? "🙈" : "👁";
 });
 
@@ -45,13 +48,13 @@ async function doLogin() {
 
   loginError.classList.add("hidden");
 
-  if (!name) { showLoginError("Naam bharna zaroori hai."); return; }
+  if (!name) { showLoginError("Please enter your name."); return; }
   if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
-    showLoginError("PIN sirf 4 numbers ka hona chahiye."); return;
+    showLoginError("PIN must be exactly 4 digits."); return;
   }
 
   loginBtn.disabled    = true;
-  loginBtn.textContent = "Check ho raha hai…";
+  loginBtn.textContent = "Checking…";
 
   try {
     const resp = await fetch("/api/login", {
@@ -62,28 +65,27 @@ async function doLogin() {
     const data = await resp.json();
 
     if (!data.success) {
-      showLoginError(data.error || "Kuch gadbad ho gayi.");
+      showLoginError(data.error || "Something went wrong.");
       return;
     }
 
     currentUser    = { name: data.user_name, is_new_user: data.is_new_user };
     historyRecords = data.history || [];
+    loginComplete  = true;
 
     if (data.is_new_user) {
-      // Naya user — seedha camera flow pe bhejo
       loginSection.classList.add("hidden");
       startMeasureFlow();
     } else {
-      // Purana user — history dikhao
       loginSection.classList.add("hidden");
       showReturningUser();
     }
 
   } catch (err) {
-    showLoginError("Network error. Dobara koshish karein.");
+    showLoginError("Network error. Please try again.");
   } finally {
     loginBtn.disabled    = false;
-    loginBtn.textContent = "Aage Badhein →";
+    loginBtn.textContent = "Continue →";
   }
 }
 
@@ -100,17 +102,17 @@ function showReturningUser() {
   document.getElementById("resultsSection").classList.add("hidden");
   document.getElementById("warningsSection").classList.add("hidden");
 
-  welcomeBackMsg.textContent  = `Wapas aaiye, ${currentUser.name}! 👋`;
+  welcomeBackMsg.textContent  = `Welcome back, ${currentUser.name}! 👋`;
   returningSubMsg.textContent = historyRecords.length
-    ? `Aapki ${historyRecords.length} measurement${historyRecords.length > 1 ? "s" : ""} pehle se saved hain.`
-    : "Aapka koi record nahi mila. Nayi measurement lein!";
+    ? `You have ${historyRecords.length} saved measurement${historyRecords.length > 1 ? "s" : ""}.`
+    : "No records found. Take your first measurement!";
 
   renderHistoryTable();
 }
 
 function renderHistoryTable() {
   if (!historyRecords.length) {
-    prevMeasurements.innerHTML = `<p class="no-history">Koi measurement record nahi mila.</p>`;
+    prevMeasurements.innerHTML = `<p class="no-history">No measurement records found.</p>`;
     return;
   }
 
@@ -150,16 +152,12 @@ newMeasurementBtn.addEventListener("click", () => {
 
 // ── Back to history (from camera) ─────────────────────────────────────────
 backToHistoryBtn.addEventListener("click", () => {
-  // Camera band karo
   if (videoEl.srcObject) {
     videoEl.srcObject.getTracks().forEach(t => t.stop());
     videoEl.srcObject = null;
   }
   if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
-
-  // State reset karo
   resetCaptureState();
-
   measureSection.classList.add("hidden");
   statusSection.classList.add("hidden");
   document.getElementById("resultsSection").classList.add("hidden");
@@ -168,17 +166,18 @@ backToHistoryBtn.addEventListener("click", () => {
   if (currentUser && !currentUser.is_new_user) {
     showReturningUser();
   } else {
-    // Naya user tha — login pe wapas
     loginSection.classList.remove("hidden");
-    currentUser = null;
+    currentUser   = null;
+    loginComplete = false;
   }
 });
 
 // ── Logout ────────────────────────────────────────────────────────────────
 logoutBtn.addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" });
-  currentUser   = null;
+  currentUser    = null;
   historyRecords = [];
+  loginComplete  = false;
   nameInput.value = "";
   pinInput.value  = "";
   returningSection.classList.add("hidden");
@@ -191,14 +190,8 @@ function startMeasureFlow() {
   resetCaptureState();
   measureSection.classList.remove("hidden");
   statusSection.classList.remove("hidden");
-
-  if (currentUser) {
-    activeUserBadge.textContent = `👤 ${currentUser.name}`;
-  }
-
-  // Back button — returning user ko history dikhao, new user ko hide karo
+  if (currentUser) activeUserBadge.textContent = `👤 ${currentUser.name}`;
   backToHistoryBtn.style.display = (currentUser && !currentUser.is_new_user) ? "" : "none";
-
   initCamera();
 }
 
@@ -209,28 +202,16 @@ function resetCaptureState() {
   poseQualityOk  = false;
   currentStep    = "front";
   cancelCountdown();
-
-  // Buttons reset
-  if (captureFrontBtn) {
-    captureFrontBtn.disabled = false;
-    captureFrontBtn.classList.remove("success");
-  }
-  if (captureSideBtn) {
-    captureSideBtn.disabled = true;
-    captureSideBtn.classList.remove("success");
-  }
-  if (captureBackBtn) {
-    captureBackBtn.disabled = true;
-    captureBackBtn.classList.remove("success");
-  }
-  if (submitBtn) submitBtn.disabled = true;
-
+  if (captureFrontBtn) { captureFrontBtn.disabled = false; captureFrontBtn.classList.remove("success"); }
+  if (captureSideBtn)  { captureSideBtn.disabled  = true;  captureSideBtn.classList.remove("success"); }
+  if (captureBackBtn)  { captureBackBtn.disabled  = true;  captureBackBtn.classList.remove("success"); }
+  if (submitBtn)       submitBtn.disabled = true;
   updateSteps();
 }
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 2 — Camera & Pose flow (original, mostly unchanged)
+// SECTION 2 — Camera & Pose flow
 // ═══════════════════════════════════════════════════════════════════════════
 
 const videoEl       = document.getElementById("liveVideo");
@@ -266,13 +247,17 @@ let poseQualityOk  = false;
 let animFrameId    = null;
 let currentStep    = "front";
 
+// Voice only activates after login is complete
 let userInteracted = false;
 document.addEventListener("click", () => {
-  if (!userInteracted) {
+  if (loginComplete && !userInteracted) {
     userInteracted = true;
-    Voice.sayNow(MSG.welcome);
+    // Only speak welcome if camera section is already visible (new user path)
+    if (!measureSection.classList.contains("hidden")) {
+      Voice.sayNow(MSG.welcome);
+    }
   }
-}, { once: true });
+});
 
 // ── Countdown state ───────────────────────────────────────────────────────
 let countdownActive = false;
@@ -332,10 +317,8 @@ async function startCountdown(onComplete) {
   countdownActive = true;
   countdownVal    = COUNTDOWN_SEC;
   drawCountdown(countdownVal);
-
   if (userInteracted) await Voice.sayNow(MSG.poseGood);
   if (!countdownActive) return;
-
   countdownTimer = setInterval(() => {
     countdownVal--;
     if (countdownVal <= 0) {
@@ -394,18 +377,17 @@ function onPoseResults(results) {
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
   if (!results.poseLandmarks) {
-    setPoseHint("⚠ Step back — full body visible karo.", false);
+    setPoseHint("⚠ Step back — make sure full body is visible.", false);
     poseQualityOk = false;
     cancelCountdown();
     return;
   }
 
   drawSkeleton(results.poseLandmarks, overlayCtx, overlayCanvas.width, overlayCanvas.height);
-
   if (countdownActive) { drawCountdown(countdownVal); return; }
 
   if (currentStep === "back") {
-    setPoseHint("✓ Hold still — back photo countdown shuru hoga!", true);
+    setPoseHint("✓ Hold still — back photo countdown starting!", true);
     poseQualityOk = true;
     if (!backImageData && !countdownActive) {
       startCountdown(() => { if (!backImageData) captureBackBtn.click(); });
@@ -470,7 +452,7 @@ function drawSkeleton(landmarks, ctx, W, H) {
 function checkPoseQuality(landmarks) {
   const required = [0, 11, 12, 23, 24, 27, 28];
   if (!required.every(i => landmarks[i] && landmarks[i].visibility > 0.55))
-    return { ok: false, message: "⚠ Step back — head to feet should be in frame." };
+    return { ok: false, message: "⚠ Step back — head to feet must be in frame." };
   const ls = landmarks[11], rs = landmarks[12];
   const lh = landmarks[23], rh = landmarks[24];
   if (Math.abs(ls.y - rs.y) / Math.max(Math.abs(ls.x - rs.x), 0.01) > 0.15)
@@ -479,8 +461,8 @@ function checkPoseQuality(landmarks) {
     return { ok: false, message: "⚠ Hips tilted — stand straight." };
   const midX = (ls.x + rs.x + lh.x + rh.x) / 4;
   if (midX < 0.25 || midX > 0.75)
-    return { ok: false, message: "⚠ Centre mein aao." };
-  return { ok: true, message: `✓ Perfect! ${COUNTDOWN_SEC} second mein capture hoga...` };
+    return { ok: false, message: "⚠ Move to the centre of the frame." };
+  return { ok: true, message: `✓ Perfect! Capturing in ${COUNTDOWN_SEC} seconds…` };
 }
 
 // ── Snapshot ──────────────────────────────────────────────────────────────
@@ -503,14 +485,14 @@ function updateSteps() {
 
 // ── FRONT capture ─────────────────────────────────────────────────────────
 captureFrontBtn.addEventListener("click", () => {
-  if (mpPose && !poseQualityOk) { setPoseHint("Pehle sahi pose lo.", false); return; }
+  if (mpPose && !poseQualityOk) { setPoseHint("Fix your pose first.", false); return; }
   if (frontImageData) return;
   cancelCountdown();
   frontImageData = captureSnapshot();
   captureFrontBtn.classList.add("success");
   captureSideBtn.disabled = false;
   currentStep = "side";
-  setStatus("Front ✓ — Ab 90° side mein ghoom jao.");
+  setStatus("Front ✓ — Now turn 90° to your side.");
   if (userInteracted) Voice.say(MSG.frontCaptured);
   updateSteps();
 });
@@ -523,7 +505,7 @@ captureSideBtn.addEventListener("click", () => {
   captureSideBtn.classList.add("success");
   captureBackBtn.disabled = false;
   currentStep = "back";
-  setStatus("Side ✓ — Ab peeche ghoom jao.");
+  setStatus("Side ✓ — Now turn around and face away.");
   if (userInteracted) Voice.say(MSG.sideReady);
   updateSteps();
 });
@@ -536,7 +518,7 @@ captureBackBtn.addEventListener("click", () => {
   captureBackBtn.classList.add("success");
   submitBtn.disabled = false;
   currentStep = "done";
-  setStatus("Back ✓ — Teeno photos ho gaye! Calculate dabao.");
+  setStatus("Back ✓ — All three photos taken! Press Calculate.");
   if (userInteracted) Voice.say("Back photo captured. All three photos done. Tap calculate whenever you are ready.");
   updateSteps();
 });
@@ -545,11 +527,11 @@ captureBackBtn.addEventListener("click", () => {
 submitBtn.addEventListener("click", async () => {
   const heightCm = Number(heightInput.value);
   if (!heightCm || heightCm < 100 || heightCm > 230) {
-    alert("Height 100–230 cm ke beech honi chahiye.");
+    alert("Height must be between 100 and 230 cm.");
     return;
   }
   if (!frontImageData || !sideImageData) {
-    alert("Pehle front aur side photos lo.");
+    alert("Please take front and side photos first.");
     return;
   }
   setStatus("Calculating measurements…");
@@ -596,7 +578,6 @@ submitBtn.addEventListener("click", async () => {
     speakMeasurements(d);
     setStatus("Measurements ready!");
 
-    // History refresh karo agar returning user hai
     if (currentUser && !currentUser.is_new_user) {
       try {
         const hr = await fetch("/api/history");
@@ -620,6 +601,5 @@ function setPoseHint(msg, good) {
   poseHint.style.color = good ? "#2e7d32" : "#e65100";
 }
 
-// ── Initial state — login screen dikhao ──────────────────────────────────
-// (Camera aur steps baad mein, login ke baad)
+// ── Initial state — show login screen ────────────────────────────────────
 updateSteps();
