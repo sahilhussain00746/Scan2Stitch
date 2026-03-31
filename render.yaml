@@ -11,8 +11,8 @@ services:
         fromDatabase:
           name: scan2stitch-db
           property: connectionString
-      -Key: PYTHON_VERSION
-      value:3.11.9
+      - key: PYTHON_VERSION
+        value: "3.11.9"
 
 databases:
   - name: scan2stitch-db
