@@ -1,4 +1,4 @@
-// static/voice_manager.js  —  Scan2Stitch (fixed)
+// static/voice_manager.js  —  Scan2Stitch
 
 const Voice = (() => {
   const synth = window.speechSynthesis;
@@ -29,7 +29,6 @@ const Voice = (() => {
   setTimeout(pickVoice, 500);
 
   // ── Unlock on first user interaction ─────────────────────────
-  // Chrome blocks TTS until user clicks/taps something
   function unlock() {
     if (unlocked) return;
     unlocked = true;
@@ -70,7 +69,7 @@ const Voice = (() => {
 
       synth.speak(utt);
 
-      // Chrome keepalive — 15s ke baad synth pause ho jaata hai
+      // Chrome keepalive — synth pauses after ~15s of silence
       const keepalive = setInterval(() => {
         if (synth.speaking) { synth.pause(); synth.resume(); }
         else clearInterval(keepalive);
@@ -132,13 +131,13 @@ const MSG = {
   tooFar:        "Please come a little closer.",
   tiltShoulder:  "Level your shoulders, they are slightly tilted.",
   tiltHip:       "Stand straight. Your hips are tilted.",
-  notCentered:   "Please move to the center of the frame.",
+  notCentered:   "Please move to the centre of the frame.",
   partialBody:   "Your full body from head to toe must be visible.",
-  poseGood:      "Perfect pose! Say yes to capture the front photo.",
-  frontCaptured: "Front photo done. Now turn sideways. Say yes when ready.",
-  sideReady:     "Good. Stand still. Taking the side photo now.",
+  poseGood:      "Perfect pose! Capturing automatically in a moment.",
+  frontCaptured: "Front photo done. Now turn sideways.",
+  sideReady:     "Good. Stand still for the side photo.",
   sideCaptured:  "All photos taken. Calculating your measurements, please wait.",
-  backReady:     "Now turn around and face away from the camera. Say yes when ready.",
+  backReady:     "Now turn around and face away from the camera.",
   resultsReady:  "Your measurements are ready.",
   shoulder:      (v) => `Shoulder width, ${v} centimeters.`,
   chest:         (v) => `Chest, ${v} centimeters.`,
