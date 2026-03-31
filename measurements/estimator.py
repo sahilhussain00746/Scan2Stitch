@@ -1,18 +1,17 @@
-# measurements/estimator.py  —  Scan2Stitch (mediapipe 0.10.33 compatible)
+# measurements/estimator.py  —  Scan2Stitch (3-angle version)
 import base64
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import cv2
+import mediapipe as mp
 import numpy as np
 
-# ── mediapipe 0.10.30+ compatible import ─────────────────────────────────
-import mediapipe as mp
 mp_pose = mp.solutions.pose
 POSE_LANDMARK = mp_pose.PoseLandmark
 
-VIS_THRESHOLD    = 0.55
+VIS_THRESHOLD = 0.55
 CHEST_CORRECTION = 1.06
 WAIST_CORRECTION = 1.08
 HIP_CORRECTION   = 1.05
@@ -87,9 +86,9 @@ class PoseEstimator:
         if not bottom_candidates:
             raise MeasurementError("Ankles not detected. Make sure full body is visible.")
 
-        bottom_y  = max(lm.y for lm in bottom_candidates)
-        top_y    -= (bottom_y - top_y) * 0.07
-        height_px = bottom_y - top_y
+        bottom_y   = max(lm.y for lm in bottom_candidates)
+        top_y     -= (bottom_y - top_y) * 0.07   # skull correction
+        height_px  = bottom_y - top_y
         if height_px < 80:
             raise MeasurementError("Person too small in frame. Step further back.")
         return height_px
@@ -109,19 +108,6 @@ class PoseEstimator:
 
     def _check_pose(self, lms: List[Landmark2D], view: str = "front") -> List[str]:
         warnings = []
-
-        # Side view ke liye sirf lean check karo — tilt/ankle ignore
-        if view == "Side":
-            nose    = lms[POSE_LANDMARK.NOSE.value]
-            l_hip   = lms[POSE_LANDMARK.LEFT_HIP.value]
-            r_hip   = lms[POSE_LANDMARK.RIGHT_HIP.value]
-            vis_hip = l_hip if l_hip.visibility > r_hip.visibility else r_hip
-            lean    = abs(nose.x - vis_hip.x) / max(abs(nose.y - vis_hip.y), 0.01)
-            if lean > 0.25:
-                warnings.append("Side view — leaning forward or backward, stand straight.")
-            return warnings
-
-        # Front / Back ke liye full check
         critical = [
             POSE_LANDMARK.NOSE,
             POSE_LANDMARK.LEFT_SHOULDER, POSE_LANDMARK.RIGHT_SHOULDER,
@@ -131,12 +117,10 @@ class PoseEstimator:
         low_vis = [p.name for p in critical if lms[p.value].visibility < VIS_THRESHOLD]
         if low_vis:
             warnings.append(f"{view} view — low visibility: {', '.join(low_vis)}")
-
         ls = lms[POSE_LANDMARK.LEFT_SHOULDER.value]
         rs = lms[POSE_LANDMARK.RIGHT_SHOULDER.value]
         lh = lms[POSE_LANDMARK.LEFT_HIP.value]
         rh = lms[POSE_LANDMARK.RIGHT_HIP.value]
-
         if abs(ls.y - rs.y) / max(abs(ls.x - rs.x), 1) > 0.15:
             warnings.append(f"{view} view — shoulders tilted.")
         if abs(lh.y - rh.y) / max(abs(lh.x - rh.x), 1) > 0.15:
@@ -144,6 +128,7 @@ class PoseEstimator:
         return warnings
 
     def _validate_with_back(self, front_lms, back_lms, front_px_to_cm, back_px_to_cm):
+        """Back view se front measurements cross-validate + average karo."""
         f_ls = front_lms[POSE_LANDMARK.LEFT_SHOULDER.value]
         f_rs = front_lms[POSE_LANDMARK.RIGHT_SHOULDER.value]
         b_ls = back_lms[POSE_LANDMARK.LEFT_SHOULDER.value]
@@ -163,7 +148,7 @@ class PoseEstimator:
 
         return {
             "shoulder_width_cm": (front_shoulder + back_shoulder) / 2,
-            "hip_width_cm":      front_hip * 0.4 + back_hip * 0.6,
+            "hip_width_cm":      front_hip * 0.4 + back_hip * 0.6,  # back ko zyada weight
             "torso_length_cm":   (front_torso + back_torso) / 2,
         }
 
@@ -185,8 +170,8 @@ class PoseEstimator:
         front_px_to_cm = height_cm / self._pixel_body_height(front_lms)
         side_px_to_cm  = height_cm / self._pixel_body_height(side_lms)
 
-        warnings  = self._check_pose(front_lms, "Front")
-        warnings += self._check_pose(side_lms,  "Side")
+        warnings = self._check_pose(front_lms, "Front")
+        warnings += self._check_pose(side_lms, "Side")
 
         l_sho = front_lms[POSE_LANDMARK.LEFT_SHOULDER.value]
         r_sho = front_lms[POSE_LANDMARK.RIGHT_SHOULDER.value]
@@ -254,7 +239,7 @@ class PoseEstimator:
         else:
             sleeve_cm = None
 
-        # ── Back image cross-validation ───────────────────────────────────
+        # ── Back image cross-validation ──────────────────────────────────
         has_back = False
         if back_image_b64:
             try:
@@ -268,6 +253,7 @@ class PoseEstimator:
                 hip_width_cm      = v["hip_width_cm"]
                 torso_cm          = round(v["torso_length_cm"], 1)
 
+                # Circumferences recalculate with improved widths
                 chest_width_cm = shoulder_width_cm * 0.97
                 chest_circ_cm  = self._ellipse_circ(chest_width_cm/2, chest_depth_cm/2) * CHEST_CORRECTION
                 hip_circ_cm    = self._ellipse_circ(hip_width_cm/2,   hip_depth_cm/2)   * HIP_CORRECTION
